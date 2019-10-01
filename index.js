@@ -5,6 +5,7 @@ const passport = require('passport');
 const session = require('cookie-session');
 const apolloServer = require('./apollo');
 const env = require('./env');
+const aws = require('./aws');
 
 // ==============
 // Initial Config
@@ -46,12 +47,17 @@ app.use(passport.initialize());
 require('./auth/strategies')(passport);
 app.use('/auth', require('./auth/routes')(passport));
 
+// ===
+// API
+// ===
+app.post('/aws/s3/sign', aws.sign_s3);
+
 // ===================
 // Production Settings
 // ===================
 if(app.settings.env === 'production') {
 	app.use(express.static('./client/build'));
-  app.get('*', function (req, res) {
+  app.post('*', function (req, res) {
     res.sendFile('./client/build/index.html', {"root": __dirname});
   });
 }

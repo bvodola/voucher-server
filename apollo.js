@@ -6,118 +6,125 @@ const typeDefs = gql`
     _id: ID
 		name: String
     email: String
-  }
-  type Client {
-    _id: ID
-    name: String
-    email: String
-    cpf: String
-    phone: String
-    created: String
-    is_lead: Boolean
-    is_archived: Boolean
-    lead_description: String
     company: Company
-    products: [ClientProduct]
-    tasks: [Task]
-    logs: [Log]
   }
-  type ClientProduct {
-    product: Product
-    status: Status
+  type Voucher {
+    _id: ID
+    code: String
+    points: Int
+    validated: Boolean
+    reward: Reward
+    company: Company
+    user: User
+    expiration_date: String
+    created: String
   }
-  type Status {
-    id: String
+  type Reward {
+    _id: ID
     name: String
-  }
-  type Log {
-    _id: ID
-    content: String
-    client: Client
-    created: String
-    creator: User
-  }
-  type Task {
-    _id: ID
-    content: String
-    client: Client
-    created: String
-    completed: Boolean
-    creator: User
-    assignees: [User]
-    date: String
-  }
-  type Message {
-    _id: ID
-    content: String
+    description: String
+    points: Int
+    images: [String]
+    stock: Int
+    company: Company
+    user: User
     created: String
   }
   type Company {
     _id: ID
     name: String
+    logo: String
+    locations: [Location]
+    parent: Company
+    created: String
   }
-  type Product {
-    _id: ID
+
+  type Location {
     name: String
-    status_list: [StatusList]
+    address: String
   }
-  type StatusList {
-    id: String
-    name: String
-  }
+  
   type Query {
-    users: [User]
+    users(user: UserInput): [User]
     user(_id: ID): User
-    clients(client: ClientInput): [Client]
-    client(_id: ID): Client
-    logs: [Log]
-    log(_id: ID): Log
-    tasks: [Task]
-    task(_id: ID): Task
-    tasksFromPeriod(startDate: String endDate: String): [Task]
+    vouchers(voucher: VoucherInput): [Voucher]
+    voucher(_id: ID): Voucher
+    rewards(reward: RewardInput): [Reward]
+    reward(_id: ID): Reward
+    companies(company: CompanyInput): [Company]
+    company(_id: ID): Company
   }
+
   type Mutation {
-    addClient(client: ClientInput): Client
-    editClient(client: ClientInput): Client
-    removeClient(client: ClientInput): Client
+    addVoucher(voucher: VoucherInput): Voucher
+    editVoucher(voucher: VoucherInput): Voucher
+    removeVoucher(voucher: VoucherInput): Voucher
 
-    addTask(task: TaskInput): Task
-    editTask(task: TaskInput): Task
-    removeTask(task: TaskInput): Task
+    addReward(reward: RewardInput): Reward
+    editReward(reward: RewardInput): Reward
+    removeReward(reward: RewardInput): Reward
 
-    addLog(log: LogInput): Log
-    editLog(log: LogInput): Log
-    removeLog(log: LogInput): Log
+    addCompany(company: CompanyInput): Company
+    editCompany(company: CompanyInput): Company
+    removeCompany(company: CompanyInput): Company
   }
-  input ClientInput {
+
+  input UserInput {
+    _id: ID
+		name: String
+    email: String
+    company_id: ID
+  }
+  input VoucherInput {
+    _id: ID
+    code: String
+    points: Int
+    points_lte: Int
+    validated: Boolean
+    reward_id: ID
+    company_id: ID
+    user_id: ID
+    expiration_date: String
+    created: String
+  }
+  input RewardInput {
     _id: ID
     name: String
-    email: String
-    phone: String
-    is_lead: Boolean
-    is_archived: Boolean
-    lead_description: String
-    company: ID
-    creator: ID
-  }
-  input LogInput {
-    _id: ID
-    content: String
-    created: String
-    client_id: ID
+    points: Int
+    points_lte: Int
+    description: String
+    images: [String]
+    stock: Int
+    stock_gte: Int
+    company_id: ID
     user_id: ID
-  }
-  input TaskInput {
-    _id: ID
-    content: String
-    client_id: String
     created: String
-    completed: Boolean
-    creator: ID
-    assignees: [ID]
-    date: String
+  }
+  input CompanyInput {
+    _id: ID
+    name: String
+    logo: String
+    locations: [LocationInput]
+    parent_id: ID
+    created: String
+  }
+  input LocationInput {
+    name: String,
+    address: String,
   }
 `;
+
+const globalConfig = {
+  models: {
+    Company: {
+      plural: 'Companies'
+    }
+  }
+}
+
+// ==================
+// Auxiliar Functions
+// ==================
 
 const prepare = (obj) => {
   if(obj) {
@@ -127,25 +134,29 @@ const prepare = (obj) => {
   } else {
     return null
   }
+}
+
+const getModelPluralName = (ModelName) => {
+  return globalConfig.models && globalConfig.models[ModelName] && globalConfig.models[ModelName].plural ?
+    globalConfig.models[ModelName].plural : `${ModelName}s`
+}
+
+const getInfo = (info, config = {}) => {
+  const ModelName = info.returnType.toString().replace('[','').replace(']','')
+  const modelName = ModelName.replace(/^\w/, c => c.toLowerCase());
   
-}
+  const Model = models[getModelPluralName(ModelName)]
 
-const getInfo = (info) => {
-  let modelName = info.returnType.toString()
-  const isCollection = modelName.indexOf('[') >=0
-
-  modelName = modelName.replace('[','').replace(']','')
   const ParentName = info.parentType.toString()
-  const parentName = info.parentType.toString().toLowerCase()
-  const Model = models[`${modelName}s`]
+  const parentName = ParentName.replace(/^\w/, c => c.toLowerCase());
+  const ParentModel = models[getModelPluralName(ParentName)]
 
-  modelName = modelName.toLowerCase()
-  const ParentModel = models[`${ParentName}s`]
-
-  return { Model, modelName, parentName, isCollection, ParentModel }
+  const isCollection = info.returnType.toString().indexOf('[') >=0
+  
+  return { Model, modelName, ParentModel, parentName, isCollection }
 }
 
-const linkToParent = (config) => async (parent, args, context, info) => {
+const linkToParent = config => async (parent, args, context, info) => {
   if(!config) config = {
     habtm: false
   }
@@ -154,20 +165,41 @@ const linkToParent = (config) => async (parent, args, context, info) => {
   if(config.habtm) {
     let field = Object.keys(Model.schema.obj).find(field => field === `${parentName}_ids`)
     if(typeof field === 'undefined') {
-      return (await Model.find({ '_id': { $in: parent[`${config.fieldName ? config.fieldName : modelName+'_ids' }`] } }).exec()).map(prepare)
+      const possibleValues = parent[`${config.fieldName ? config.fieldName : modelName+'_ids' }`];
+      return (await Model.find({ '_id': { $in: possibleValues } }).exec()).map(prepare)
     }
   }
-
   return isCollection ?
     (await Model.find({[`${parentName}_id${config.habtm ? 's' : ''}`]: parent._id}).exec()).map(prepare) :
-    prepare(await Model.findOne(parent[`${modelName}_id`]))
+    prepare(await Model.findOne({_id: parent[`${modelName}_id`]}))
 }
 
-const linkToModel = async (parent, args, context, info) => {
-  const { Model, isCollection, modelName } = getInfo(info)
-
-  if(typeof args[modelName] !== 'undefined' ) args = args[modelName];
+const linkToModel = config => async (parent, args, context, info) => {
+  const { Model, modelName, isCollection } = getInfo(info, config)
   
+  if(typeof args[modelName] !== 'undefined')
+    args = args[modelName];
+
+  Object.keys(args).map(key => {
+    if(key.includes('_ids') && Array.isArray(args[key])) {
+      args[key] = { $all: args[key]}
+    }
+
+    // If we pass, for instance, points_lte: 4, turns it to points: { $lte: 4 }
+    if(key.endsWith('_lte')) {
+      args[key.split('_lte')[0]] = { $lte: args[key]}
+      delete args[key];
+    }
+
+    if(key.endsWith('_gte')) {
+      args[key.split('_gte')[0]] = { $gte: args[key]}
+      delete args[key];
+    }
+
+  });
+
+  console.log(args);
+
   return isCollection ?
     (await Model.find(args).exec()).map(prepare) :
     prepare(await Model.findOne(args).exec())
@@ -175,91 +207,96 @@ const linkToModel = async (parent, args, context, info) => {
 
 const addMutation = (config) => async (parent, args, context, info) => {
   const Model = config.model;
-  const model = Model.toLowerCase();
-  return prepare(await models[`${Model}s`].create(args[model]))
+  const model = Model.replace(/^\w/, c => c.toLowerCase());
+  
+  if (config.multiple) {
+    console.log(getModelPluralName(Model));
+    const res = (await models[getModelPluralName(Model)].insertMany(args[`${model}s`])).map(prepare);
+    if(typeof config.postHook === 'function') config.postHook(args[`${model}s`]);
+    return res;
+
+  } else {
+    const res = prepare(await models[getModelPluralName(Model)].create(args[model]));
+    if(typeof config.postHook === 'function') config.postHook(args[model]);
+    return res;
+  }
+
+  
 }
 
 const editMutation = (config) => async (parent, args, context, info) => {
   const Model = config.model;
-  const model = Model.toLowerCase();
+  const model = Model.replace(/^\w/, c => c.toLowerCase());
   const {_id} = args[model];
   const setArgs = { ...args[model]}
   delete setArgs._id
-  await models[`${Model}s`].update({_id}, {$set: setArgs})
-  return prepare(await models[`${Model}s`].findOne({_id}).exec())
+  await models[getModelPluralName(Model)].update({_id}, {$set: setArgs})
+  return prepare(await models[getModelPluralName(Model)].findOne({_id}).exec())
 }
 
 const removeMutation = (config) => async (parent, args, context, info) => {
   const Model = config.model;
-  const model = Model.toLowerCase();
+  const model = Model.replace(/^\w/, c => c.toLowerCase());
   const {_id} = args[model];
-  await models[`${Model}s`].remove({_id}).exec()
+  await models[getModelPluralName(Model)].remove({_id}).exec()
   return {_id};
 }
+
+// =========
+// Resolvers
+// =========
 
 const resolvers = {
   // ============
   // Custom Types
   // ============
-  ClientProduct: {
-    status: async (parent,args,context,info) => {
-      const {status_list} = prepare(await models.Products.findOne(parent.product._id).exec())
-      return status_list.find(s => s.id === parent.status)
-    }
+  User: {
+    company: linkToParent(),
   },
-  Product: {
-    status_list: async (parent, args, context, info) => {
-      const {ParentModel} = getInfo(info);
-      return prepare(await ParentModel.findOne(parent._id).exec()).status_list
-    }
+  Voucher: {
+    reward: linkToParent(),
+    company: linkToParent(),
   },
-  Task: {
-    assignees: linkToParent({habtm: true, fieldName: 'assignees'}),
-    creator: linkToParent(),
-    client: linkToParent()
+  Reward: {
+    company: linkToParent(),
+    user: linkToParent(),
   },
-  Log: {
-    creator: linkToParent()
-  },
-  Client: {
-    tasks: linkToParent(),
-    logs: linkToParent(),
+  Company: {
+    parent: linkToParent({fieldName: 'parent'}),
   },
   
   // =====
   // Query
   // =====
   Query: {
-		users: linkToModel,
-    user: linkToModel,
-    clients: linkToModel,
-    client: linkToModel,
-    logs: linkToModel,
-    log: linkToModel,
-    tasks: linkToModel,
-    task: linkToModel,
-    tasksFromPeriod: async (parent, args, context, info) => {
-      let {startDate, endDate} = args;
-      const query = {date: {$gte: new Date(startDate), $lte: new Date(endDate)}}
-      return (await models.Tasks.find(query).exec()).map(prepare)
-    }
+		users: linkToModel(),
+    user: linkToModel(),
+
+    vouchers: linkToModel(),
+    voucher: linkToModel(),
+
+    rewards: linkToModel(),
+    reward: linkToModel(),
+
+    companies: linkToModel(),
+    company: linkToModel(),
   },
 
   // ========
   // Mutation
   // ========
   Mutation: {
-    addClient: addMutation({model: 'Client'}),
-    editClient: editMutation({model: 'Client'}),
-    removeClient: removeMutation({model: 'Client'}),
+    addVoucher: addMutation({model: 'Voucher'}),
+    editVoucher: editMutation({model: 'Voucher'}),
+    removeVoucher: removeMutation({model: 'Voucher'}),
 
-    addLog: addMutation({model: 'Log'}),
-    editLog: editMutation({model: 'Log'}),
-    removeLog: removeMutation({model: 'Log'}),
+    addReward: addMutation({model: 'Reward'}),
+    editReward: editMutation({model: 'Reward'}),
+    removeReward: removeMutation({model: 'Reward'}),
 
-    addTask: addMutation({model: 'Task'}),
-    editTask: editMutation({model: 'Task'}),
-    removeTask: removeMutation({model: 'Task'}),
+    addCompany: addMutation({model: 'Company'}),
+    editCompany: editMutation({model: 'Company'}),
+    removeCompany: removeMutation({model: 'Company'}),
   }
 };
 
